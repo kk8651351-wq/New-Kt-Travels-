@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEW KT TRAVELS - Shared Online Booking</title>
+
+<style>
+body{
+font-family:Arial;
+background:#f2f2f2;
+margin:0;
+}
+.header{
+background:#c00;
+color:white;
+padding:15px;
+text-align:center;
+font-size:22px;
+font-weight:bold;
+}
+.box{
+background:white;
+margin:20px;
+padding:20px;
+border-radius:10px;
+}
+input,button,select{
+width:100%;
+padding:12px;
+margin:8px 0;
+font-size:16px;
+}
+button{
+background:#c00;
+color:white;
+border:0;
+border-radius:5px;
+}
+.seat{
+display:inline-block;
+width:45px;
+height:45px;
+margin:5px;
+background:#ddd;
+text-align:center;
+padding-top:15px;
+border-radius:5px;
+}
+
+.seat-chart{display:grid;grid-template-columns:1fr 1fr 52px 1fr 1fr;gap:7px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:10px;margin-top:8px}.seat-head{text-align:center;font-weight:bold;font-size:13px;padding:4px;color:#333}.aisle{display:flex;align-items:center;justify-content:center;background:#eaf2ff;border:1px solid #b9cde8;border-radius:5px;font-weight:bold;color:#b00000;writing-mode:vertical-rl;transform:rotate(180deg);min-height:68px}.seat{width:100%;min-height:68px;margin:0;padding:5px;border-radius:5px;font-size:18px;font-weight:bold;background:#dff3df;color:#176b2b;border:1px solid #8fbc8f}.vip-seat{background:#fff1b8!important;color:#b00000!important;border-color:#d6a700!important;font-weight:800}.seat.selected{background:#7db7e8!important;color:#083b66!important;border-color:#377eb8}.split-seat-cell{display:flex;gap:3px;min-height:68px}.split-seat-cell .seat{min-width:0;flex:1;padding:3px;font-size:15px}.split-seat-cell .seat.booked{background:#f5aaaa!important}.split-seat-cell .seat.selected{background:#7db7e8!important}.seat.booked{background:#f5aaaa!important;color:#9b0000!important;border-color:#d00}@media(max-width:520px){.seat-chart{grid-template-columns:1fr 1fr 38px 1fr 1fr;gap:5px;padding:5px}.seat{min-height:58px;font-size:15px}.aisle{min-height:58px;font-size:11px}.seat-head{font-size:10px}}
+</style>
+
+<style>#agentLogin{position:fixed;inset:0;background:#f2f2f2;z-index:99999;overflow:auto}.kt-head{height:88px;background:#d90000;color:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800}.kt-login-wrap{padding:34px 32px;display:flex;justify-content:center}.kt-login-card{width:100%;max-width:625px;background:#fff;border-radius:16px;padding:38px 32px 44px;box-sizing:border-box}.kt-login-card h1{margin:0 0 42px;font-size:38px;color:#111}.kt-login-card input{width:100%;height:70px;box-sizing:border-box;padding:0 20px;margin:0 0 22px;border:1px solid #888;border-radius:5px;font-size:22px}.kt-login-card button{width:100%;height:68px;border:0;border-radius:8px;background:#d90000;color:#fff;font-size:23px}.kt-login-card #loginError{color:#c00;text-align:center;min-height:22px;margin-top:10px}</style>
+<style id="kt-confirm-booking-back-style">
+.kt-confirm-booking-back{width:100%;padding:12px;margin:0 0 10px;font-size:16px;background:#555;color:#fff;border:0;border-radius:5px;cursor:pointer;}
+</style>
+
+
+
+<!-- SHARED ONLINE BOOKING: Firebase Realtime Database -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js">
+function ktScopeValue(id){
+  const e=document.getElementById(id);
+  return String(e ? (e.value !== undefined ? e.value : e.textContent) : "").trim().replace(/\|/g," ");
+}
+function ktScopeKey(){
+  return [ktScopeValue("busname"),ktScopeValue("busno"),ktScopeValue("journeyDate"),ktScopeValue("route")].join("|");
+}
+function ktBookingScope(t){
+  return [String(t&&t.busName||"").trim(),String(t&&t.bus||"").trim(),String(t&&t.journeyDate||"").trim(),String(t&&t.route||"").trim()].join("|");
+}
+function ktSameScope(t){ return !!t && ktBookingScope(t)===ktScopeKey(); }
+function ktRefreshSeatScope(){
+  try{ renderSeatsForSelectedDate(); }catch(e){ console.error(e); }
+}
+function ktBindScopeFields(){
+  ["busname","busno","journeyDate","route"].forEach(function(id){
+    const e=document.getElementById(id); if(!e || e.dataset.ktScopeBound==="1") return;
+    e.dataset.ktScopeBound="1";
+    ["change","input"].forEach(function(ev){e.addEventListener(ev,function(){
+      window._selectedBookedTicket=null; window._selectedBookedSeat="";
+      const d=document.getElementById("seatDetails"); if(d)d.style.display="none";
+      ktRefreshSeatScope();
+    });});
+  });
+}
+
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+#onlineStatus{font-weight:bold}
+.kt-online-box{margin-top:12px;padding:12px;border-radius:8px;background:#eef7ff;border:1px solid #b8d8f5}
+.kt-online-box small{display:block;margin-top:6px;color:#444;line-height:1.35}
+</style>
+
+</head>
+
+<body><div id="agentLogin"><div class="kt-head">NEW KT TRAVELS</div><div class="kt-login-wrap"><div class="kt-login-card"><h1>Agent Login</h1><input id="agentUsername" type="text" placeholder="Username"><input id="agentPassword" type="password" placeholder="Password"><button type="button" onclick="agentLogin()">Login</button><div id="loginError"></div></div></div></div>
+</div>
+
+<div class="header">
+NEW KT TRAVELS
+</div>
+
+<div class="box" id="dashboard" style="display:none">
+<h2>Dashboard</h2>
+<p>Bus Name: <b>NEW KT TRAVELS</b></p>
+<p>Route: Ahmedabad - Aasind - Bhilwara</p>
+<button onclick="booking()">Sleeper Booking</button><button onclick="showHistory()">Ticket History</button>
+</div>
+<div class="box" id="booking" style="display:none">
+<h2>Sleeper Booking (36 Seats)</h2>
+
+<p>Bus Name</p>
+<select id="busname"></select>
+<input id="otherBusName" placeholder="Enter New Bus Name" style="display:none">
+<button type="button" id="saveBusNameBtn" style="background:#555;">Add / Save Bus Name</button>
+<p>Bus Number</p>
+<input id="busno" placeholder="Daily Bus Number">
+<p>Journey Date</p>
+<input id="journeyDate" inputmode="numeric" placeholder="DD/MM/YYYY" maxlength="10" type="date">
+
+<p>Route</p>
+<select id="route"><option value="">Select Route</option><option>Ahmedabad to Asind</option><option>Ahmedabad to Bhilwara</option><option>Asind to Ahmedabad</option></select>
+
+<p>Passenger Name</p>
+<input id="pname" placeholder="Passenger Name">
+
+<p>Mobile Number</p>
+<input id="mobile" placeholder="Mobile Number">
+
+<p>Rate Per Seat (₹)</p>
+<input id="rate" type="number" min="0" step="1" placeholder="Enter rate per seat">
+<p style="font-size:14px;color:#555;margin:0 0 8px;">Single seat = 1× rate | Double seat (15-16 / A-B etc.) = 2× rate</p>
+<p id="fareSummary" style="font-weight:bold;font-size:18px;margin:4px 0 12px;">Total Fare: ₹0</p>
+
+<p>Select Seat</p>
+
+<div id="seats" class="seat-chart"></div>
+
+<div id="seatDetails" style="display:none;margin-top:12px;padding:14px;background:#fff8e1;border:1px solid #e0b400;border-radius:8px;"><b>Seat Details</b><div id="seatDetailsData" style="margin-top:8px;line-height:1.6;"></div><button type="button" id="editSeatBtn" onclick="editBookedSeat()" style="display:none;margin-top:10px;background:#d88a00;">Edit Booked Seat</button><div id="cancelSeatBox" style="display:none;margin-top:10px;">
+<label for="cancelSeatNumber" style="display:block;font-weight:bold;margin-bottom:6px;">Cancel Seat</label>
+<select id="cancelSeatNumber" style="display:block;width:100%;padding:12px;margin-bottom:8px;font-size:16px;"></select>
+<button type="button" onclick="cancelSelectedBookedSeat()" style="background:#c00;">Cancel Selected Seat</button>
+</div><div id="seatEditForm" style="display:none;margin-top:12px;"><label for="editSeatNumber" style="display:block;font-weight:bold;margin-top:8px;">Seat Number</label>
+<select id="editSeatNumber" style="display:block;width:100%;padding:12px;margin:8px 0;font-size:16px;"></select>
+  <input id="editPassengerName" placeholder="Passenger Name"><input id="editMobile" placeholder="Mobile Number"><input id="editBusNo" placeholder="Bus Number"><select id="editRoute"><option value="">Select Route</option><option>Ahmedabad to Asind</option><option>Ahmedabad to Bhilwara</option><option>Asind to Ahmedabad</option></select><input id="editJourneyDate" type="date"><input id="editRate" type="number" min="0" step="1" placeholder="Rate Per Seat"><button type="button" onclick="saveEditedBookedSeat()">Save Changes</button><button type="button" onclick="cancelEditBookedSeat()" style="background:#555;">Cancel Edit</button></div></div>
+
+<button type="button" class="kt-confirm-booking-back" onclick="backDashboard()">← Back to Dashboard</button>
+<button onclick="makeTicket()">Confirm Booking</button>
+</div>
+
+
+<div class="box" id="history" style="display:none">
+<h2>Ticket History</h2>
+<div style="margin:12px 0"><label><b>Bus Name</b></label><select id="historyBusFilter" onchange="filterTicketHistoryByBus()" style="width:100%;padding:12px;margin-top:6px;font-size:16px"><option value="ALL">All Buses</option></select></div><div id="historyData"></div>
+<button onclick="backDashboard()">Back</button>
+</div>
+
+<div class="box" id="ticket" style="display:none">
+<h2>NEW KT TRAVELS Ticket</h2>
+
+<p id="ticketData"></p>
+
+<hr>
+<p>
+Contact:
+<br>
+9898380437
+<br>
+9510574377
+</p>
+
+<button id="confirmBackButton" onclick="backToDashboardFromConfirm()" style="background:#555;">← Back to Dashboard</button>
+<button onclick="sendSMS()">Send SMS</button>
+</div>
+
+<div class="box" id="smsScreen" style="display:none">
+<h2>Send SMS</h2>
+<p id="smsPreview"></p>
+<button onclick="sendNativeSMS()">Send SMS</button>
+<button onclick="backToConfirmTicket()" style="background:#555;">Back to Confirm Booking</button>
+</div>
+
+<script>
+let selectedSeat="";
+let selectedSeats=[];
+let currentTicket=null;
+
+// ===== SHARED ONLINE DATABASE SETTINGS =====
+// Paste the Firebase Web App configuration supplied by Firebase Console here.
+// Never put a Firebase service-account/private key in this HTML file.
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD33KKEf7j9CllNj3mkbC1KAez2h092iuo",
+  authDomain: "new-kt-travels.firebaseapp.com",
+  databaseURL: "https://new-kt-travels-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "new-kt-travels",
+  storageBucket: "new-kt-travels.firebasestorage.app",
+  messagingSenderId: "258638398867",
+  appId: "1:258638398867:web:69616284ae1884aab31466",
+  measurementId: "G-5SSZLBKYC2"
+};
+
+let db=null, onlineReady=false, onlineBookings={}, onlineListenerAttached=false;
+
+function firebaseConfigured(){
+  return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_") &&
+         FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.startsWith("PASTE_") &&
+         FIREBASE_CONFIG.databaseURL && !FIREBASE_CONFIG.databaseURL.includes("PASTE_PROJECT_ID");
+}
+function setOnlineStatus(text,ok){
+  const el=document.getElementById("onlineStatus");
+  if(el){el.textContent=text;el.style.color=ok?"#16803c":"#b00000";}
+}
+function initSharedDatabase(){
+  if(!firebaseConfigured()) return;
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db=firebase.database();
+    db.goOnline();
+    if(!onlineListenerAttached){
+      onlineListenerAttached=true;
+      db.ref("kt_bookings").on("value",snap=>{
+        onlineBookings=snap.val()||{};
+        onlineReady=true;
+        refreshCurrentScreen();
+      },err=>{
+        console.error("Firebase read error",err);
+        onlineReady=false;
+      });
+    }
+  }catch(e){console.error(e);onlineReady=false;}
+}
+function bookingArray(){
+  const raw=Object.keys(onlineBookings||{}).map(k=>onlineBookings[k]).filter(Boolean);
+  const grouped={};
+  raw.forEach(function(t){
+    const id=String(t.id||"");
+    if(!id){grouped[Math.random()]=t;return;}
+    if(!grouped[id]){
+      grouped[id]=Object.assign({},t,{seats:Array.isArray(t.seats)?t.seats.slice():String(t.seat||"").split(",").map(x=>x.trim()).filter(Boolean)});
+    }else{
+      const a=grouped[id].seats||[];
+      const b=Array.isArray(t.seats)?t.seats:String(t.seat||"").split(",").map(x=>x.trim()).filter(Boolean);
+      b.forEach(function(x){if(a.indexOf(x)<0)a.push(x);});
+      grouped[id].seats=a;
+    }
+  });
+  return Object.keys(grouped).map(function(k){
+    const t=grouped[k];
+    if(Array.isArray(t.seats) && t.seats.length) t.seat=t.seats.join(", ");
+    return t;
+  });
+}
+function getHistory(){return onlineReady?bookingArray():JSON.parse(localStorage.getItem("kt_history")||"[]");}
+function saveHistory(h){if(!onlineReady)localStorage.setItem("kt_history",JSON.stringify(h||[]));}
+function bookingKey(t){
+  return [String(t.busName||"NEW KT TRAVELS").trim(),String(t.bus||"").trim(),String(t.journeyDate||"").trim(),String(t.route||"").trim(),String(t.seat||"")]
+    .join("__").replace(/[.#$/[\]]/g,"_");
+}
+function refreshCurrentScreen(){
+  try{
+    if(document.getElementById("booking")?.style.display!=="none") renderSeatsForSelectedDate();
+    if(document.getElementById("history")?.style.display!=="none") filterTicketHistoryByBus();
+  }catch(e){console.error(e);}
+}
+function login(){ return agentLogin(); }
+function booking(){
+  document.getElementById("dashboard").style.display="none";
+  document.getElementById("ticket").style.display="none";
+  document.getElementById("history").style.display="none";
+  document.getElementById("booking").style.display="block";
+  selectedSeat="";
+  selectedSeats=[];
+  const sd=document.getElementById("seatDetails"); if(sd) sd.style.display="none";
+  const cb=document.getElementById("cancelSeatBox"); if(cb) cb.style.display="none";
+  updateFare();
+  const dateInput=document.getElementById("journeyDate");
+  if(dateInput && !dateInput.value){
+    const d=new Date();
+    const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);
+    dateInput.value=local.toISOString().slice(0,10);
+  }
+  renderSeatsForSelectedDate();
+}
+document.addEventListener("DOMContentLoaded",function(){
+  const rate=document.getElementById("rate");
+  if(rate) rate.addEventListener("input",updateFare);
+  const d=document.getElementById("journeyDate");
+  const b=document.getElementById("busname");
+  if(d) d.addEventListener("change",function(){ if(document.getElementById("booking").style.display!=="none") booking(); });
+  if(b) b.addEventListener("change",function(){ if(document.getElementById("booking").style.display!=="none") booking(); });
+});
+function addSeatButton(label,booked,box){ const b=document.createElement("button"); b.type="button"; b.className="seat"; b.textContent=label; if(booked.includes(String(label))){b.classList.add("booked");b.title="Booked - tap to view details";b.onclick=()=>showBookedSeatDetails(String(label));}else{b.onclick=()=>selectSeat(label,b);} box.appendChild(b);}
+function addSeatPairCell(label,booked,box){
+  const parts=String(label).split("-").map(function(x){return x.trim();}).filter(Boolean);
+  if(parts.length!==2){ addSeatButton(label,booked,box); return; }
+  const cell=document.createElement("div");
+  cell.className="split-seat-cell";
+  parts.forEach(function(part){
+    const b=document.createElement("button");
+    b.type="button"; b.className="seat"; b.textContent=part;
+    if(booked.includes(part) || booked.includes(label)){
+      b.classList.add("booked"); b.title="Booked - tap to view details";
+      b.onclick=function(){showBookedSeatDetails(part);};
+    }else{
+      b.onclick=function(){selectSeat(part,b);};
+    }
+    cell.appendChild(b);
+  });
+  box.appendChild(cell);
+}
+
+function seatUnitCount(label){
+  const s=String(label||"").trim();
+  if(s==="VIP") return 1;
+  if(/^\d+-\d+$/.test(s) || /^[A-Za-z]-[A-Za-z]$/.test(s)) return 2;
+  return 1;
+}
+function selectedSeatUnitCount(){
+  return selectedSeats.reduce(function(total,label){return total+seatUnitCount(label);},0);
+}
+function updateFare(){
+  const rateEl=document.getElementById("rate");
+  const out=document.getElementById("fareSummary");
+  const rate=Number(rateEl && rateEl.value || 0);
+  const units=selectedSeatUnitCount();
+  const total=rate*units;
+  if(out) out.textContent="Total Fare: ₹"+total+" ("+units+" seat"+(units===1?"":"s")+")";
+}
+function selectSeat(n,btn){
+  n=String(n);
+  const i=selectedSeats.indexOf(n);
+  if(i>=0){ selectedSeats.splice(i,1); btn.classList.remove("selected"); }
+  else { selectedSeats.push(n); btn.classList.add("selected"); }
+  selectedSeat=selectedSeats[0]||"";
+  updateFare();
+}
+
+function showBookedSeatDetails(seatLabel){
+  const date=document.getElementById("journeyDate")?.value||"";
+  const bus=typeof getSelectedBusName==="function"?getSelectedBusName():(document.getElementById("busname")?.value||"");
+  let history=[];
+  try{history=getHistory()||[];}catch(e){history=[];}
+
+  function seatsOf(t){
+    if(Array.isArray(t.seats)) return t.seats.map(function(x){return String(x).trim();}).filter(Boolean);
+    return String(t.seat||"").split(",").map(function(x){return x.trim();}).filter(Boolean);
+  }
+
+  // Find the exact booking record containing the clicked seat.
+  const clicked=history.find(function(t){
+    return String(t.journeyDate||"")===String(date) &&
+      String(t.busName||"").trim()===String(bus).trim() &&
+      seatsOf(t).indexOf(String(seatLabel))>=0;
+  });
+
+  const panel=document.getElementById("seatDetails"),data=document.getElementById("seatDetailsData");
+  if(!panel||!data)return;
+  const editBtn=document.getElementById("editSeatBtn"),editForm=document.getElementById("seatEditForm");
+  if(editForm)editForm.style.display="none";
+
+  if(!clicked){
+    data.innerHTML="Seat details not found.";
+    if(editBtn)editBtn.style.display="none";
+    panel.style.display="block";
+    return;
+  }
+
+  /*
+    Multi-seat bookings are stored online as one record per selected seat,
+    but all copies have the same booking id and the same seats[] array.
+    Join those records by booking id so clicking 23-24 also shows 25-26 and V.
+  */
+  let related=[];
+  const clickedId=String(clicked.id||"");
+  if(clickedId){
+    related=history.filter(function(t){
+      return String(t.id||"")===clickedId &&
+        String(t.journeyDate||"")===String(date) &&
+        String(t.busName||"").trim()===String(bus).trim();
+    });
+  }
+
+  // Fallback for older local records that did not store a booking id.
+  if(!related.length){
+    related=history.filter(function(t){
+      return String(t.journeyDate||"")===String(date) &&
+        String(t.busName||"").trim()===String(bus).trim() &&
+        String(t.name||"").trim()===String(clicked.name||"").trim() &&
+        String(t.mobile||"").trim()===String(clicked.mobile||"").trim() &&
+        String(t.bus||"").trim()===String(clicked.bus||"").trim() &&
+        String(t.route||"").trim()===String(clicked.route||"").trim();
+    });
+  }
+  if(!related.length)related=[clicked];
+
+  const allSeats=[];
+  related.forEach(function(t){
+    seatsOf(t).forEach(function(s){
+      if(allSeats.indexOf(s)<0)allSeats.push(s);
+    });
+  });
+
+  let totalUnits=0;
+  allSeats.forEach(function(s){
+    totalUnits += (typeof seatUnitCount==="function" ? seatUnitCount(s) : 1);
+  });
+
+  // Every copied record contains the same totalFare, so use it once.
+  const totalFare=Number(clicked.totalFare||0) || (Number(clicked.rate||0)*totalUnits);
+
+  window._selectedBookedTicket=clicked;
+  window._selectedBookedSeat=String(seatLabel);
+  if(editBtn)editBtn.style.display="block";
+
+  const cancelBox=document.getElementById("cancelSeatBox");
+  const cancelSelect=document.getElementById("cancelSeatNumber");
+  if(cancelBox && cancelSelect){
+    cancelSelect.innerHTML="";
+    allSeats.forEach(function(s){
+      const option=document.createElement("option");
+      option.value=s;
+      option.textContent=s;
+      cancelSelect.appendChild(option);
+    });
+    cancelSelect.value=String(seatLabel);
+    cancelBox.style.display="block";
+  }
+
+  data.innerHTML=
+    "<b>Seat No:</b> "+safe(allSeats.join(", "))+"<br>"+
+    "<b>Total Seats:</b> "+safe(totalUnits)+"<br>"+
+    "<b>Passenger:</b> "+safe(clicked.name||"")+"<br>"+
+    "<b>Mobile:</b> "+safe(clicked.mobile||"")+"<br>"+
+    "<b>Bus No:</b> "+safe(clicked.bus||"")+"<br>"+
+    "<b>Route:</b> "+safe(clicked.route||"")+"<br>"+
+    "<b>Journey Date:</b> "+safe(clicked.journeyDate||"")+"<br>"+
+    "<b>Rate:</b> ₹"+safe(clicked.rate||0)+"<br>"+
+    "<b>Total Fare:</b> ₹"+safe(totalFare);
+
+  panel.style.display="block";
+  panel.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+let editingBookedTicketId="", editingBookedSeat="";
+function getAllSeatLabels(){
+  return ["D","C","15","16","A","B","E","F","17","18","G","H","L","K","19","20","I","J",
+          "M","N","21","22","O","P","T","S","23","24","Q","R","U","V","25","26","W","X","VIP"];
+}
+function populateEditSeatOptions(currentSeat){
+  const select=document.getElementById("editSeatNumber");
+  if(!select)return;
+  const date=document.getElementById("journeyDate")?.value || "";
+  const bus=typeof getSelectedBusName==="function" ? getSelectedBusName() : (document.getElementById("busname")?.value || "");
+  let history=[];
+  try{history=getHistory()||[];}catch(e){}
+  const booked=new Set();
+  history.forEach(function(t){
+    if(String(t.id||"")===String(editingBookedTicketId)) return;
+    if(String(t.journeyDate||"")!==String(date)) return;
+    if(String(t.busName||"")!==String(bus)) return;
+    String(t.seat||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>booked.add(x));
+  });
+  select.innerHTML="";
+  getAllSeatLabels().forEach(function(seat){
+    if(booked.has(seat) && seat!==String(currentSeat)) return;
+    const o=document.createElement("option");
+    o.value=seat;
+    o.textContent=seat+(seat===String(currentSeat)?" (Current)":"");
+    select.appendChild(o);
+  });
+  select.value=String(currentSeat);
+}
+function cancelSelectedBookedSeat(){
+  const ticket=window._selectedBookedTicket;
+  const select=document.getElementById("cancelSeatNumber");
+  const seatToCancel=select ? String(select.value||"").trim() : "";
+  if(!ticket || !seatToCancel){ alert("Cancel karne ke liye seat select karein."); return; }
+  if(!confirm("Seat "+seatToCancel+" ko cancel karna hai?")) return;
+
+  function seatsOf(t){
+    if(Array.isArray(t.seats)) return t.seats.map(function(x){return String(x).trim();}).filter(Boolean);
+    return String(t.seat||"").split(",").map(function(x){return x.trim();}).filter(Boolean);
+  }
+  const ticketId=String(ticket.id||"");
+
+  if(typeof onlineReady!=="undefined" && onlineReady && typeof db!=="undefined"){
+    db.ref("kt_bookings").once("value").then(function(snap){
+      const data=snap.val()||{};
+      const keys=[];
+      Object.keys(data).forEach(function(k){
+        if(data[k] && String(data[k].id||"")===ticketId) keys.push(k);
+      });
+
+      let allSeats=[];
+      keys.forEach(function(k){
+        seatsOf(data[k]).forEach(function(s){ if(allSeats.indexOf(s)<0) allSeats.push(s); });
+      });
+      if(!allSeats.length) allSeats=seatsOf(ticket);
+      if(allSeats.indexOf(seatToCancel)<0) throw new Error("Selected seat not found");
+
+      const remaining=allSeats.filter(function(s){return s!==seatToCancel;});
+      const updates={};
+      keys.forEach(function(k){updates[k]=null;});
+
+      if(remaining.length){
+        const units=remaining.reduce(function(n,s){return n+seatUnitCount(s);},0);
+        remaining.forEach(function(seat){
+          const updated=Object.assign({},ticket,{
+            seat:String(seat),
+            seats:remaining.slice(),
+            seatCount:units,
+            totalFare:Number(ticket.rate||0)*units
+          });
+          updates[bookingKey(updated)]=updated;
+        });
+      }
+
+      return db.ref("kt_bookings").update(updates).then(function(){return remaining;});
+    }).then(function(remaining){
+      const box=document.getElementById("cancelSeatBox"); if(box) box.style.display="none";
+      if(typeof renderSeatsForSelectedDate==="function") renderSeatsForSelectedDate();
+      if(remaining.length){
+        alert("Seat "+seatToCancel+" cancel ho gayi. Baaki seats booked hain.");
+        showBookedSeatDetails(remaining[0]);
+      }else{
+        alert("Seat "+seatToCancel+" cancel ho gayi.");
+        const panel=document.getElementById("seatDetails"); if(panel) panel.style.display="none";
+      }
+    }).catch(function(err){
+      console.error(err);
+      alert("Seat cancel nahi hui. Database/Internet check karein.");
+    });
+    return;
+  }
+
+  let history=typeof getHistory==="function" ? getHistory() : [];
+  const index=history.findIndex(function(x){return String(x.id||"")===ticketId;});
+  if(index<0){alert("Booking not found.");return;}
+  const seats=seatsOf(history[index]);
+  const pos=seats.indexOf(seatToCancel);
+  if(pos<0){alert("Selected seat booking me nahi hai.");return;}
+  seats.splice(pos,1);
+  if(!seats.length){
+    history.splice(index,1);
+  }else{
+    const units=seats.reduce(function(n,s){return n+seatUnitCount(s);},0);
+    history[index]=Object.assign({},history[index],{
+      seat:seats.join(", "), seats:seats, seatCount:units,
+      totalFare:Number(history[index].rate||0)*units
+    });
+  }
+  if(typeof saveHistory==="function") saveHistory(history);
+  if(typeof renderSeatsForSelectedDate==="function") renderSeatsForSelectedDate();
+  const box=document.getElementById("cancelSeatBox"); if(box) box.style.display="none";
+  if(seats.length){
+    alert("Seat "+seatToCancel+" cancel ho gayi. Baaki seats booked hain.");
+    showBookedSeatDetails(seats[0]);
+  }else{
+    alert("Seat "+seatToCancel+" cancel ho gayi.");
+    const panel=document.getElementById("seatDetails"); if(panel) panel.style.display="none";
+  }
+}
+
+function editBookedSeat(){
+ const t=window._selectedBookedTicket;if(!t)return;
+ editingBookedTicketId=String(t.id||"");editingBookedSeat=String(window._selectedBookedSeat||"");
+ populateEditSeatOptions(editingBookedSeat);
+ document.getElementById("editPassengerName").value=t.name||"";document.getElementById("editMobile").value=t.mobile||"";document.getElementById("editBusNo").value=t.bus||"";document.getElementById("editRoute").value=t.route||"";document.getElementById("editJourneyDate").value=t.journeyDate||"";document.getElementById("editRate").value=t.rate||0;
+ document.getElementById("seatEditForm").style.display="block";document.getElementById("editSeatBtn").style.display="none";
+}
+function cancelEditBookedSeat(){document.getElementById("seatEditForm").style.display="none";document.getElementById("editSeatBtn").style.display="block";}
+function saveEditedBookedSeat(){
+ const t=window._selectedBookedTicket;
+ if(!t)return;
+
+ const newSeat=document.getElementById("editSeatNumber").value.trim();
+ const name=document.getElementById("editPassengerName").value.trim();
+ const mobile=document.getElementById("editMobile").value.trim();
+ const bus=document.getElementById("editBusNo").value.trim();
+ const route=document.getElementById("editRoute").value;
+ const journeyDate=document.getElementById("editJourneyDate").value;
+ const rate=Number(document.getElementById("editRate").value||0);
+
+ if(!newSeat){alert("Seat Number select karein");return;}
+ if(!name||!mobile||!bus||!route||!journeyDate){alert("Please fill all details");return;}
+
+ if(onlineReady){
+   db.ref("kt_bookings").once("value").then(function(snap){
+     const data=snap.val()||{};
+     const ticketId=String(editingBookedTicketId);
+     const currentSeat=String(editingBookedSeat);
+     const updates={};
+     let oldFound=false;
+     let seats=[];
+
+     // Collect every Firebase record belonging to this ticket.
+     Object.keys(data).forEach(function(k){
+       const x=data[k];
+       if(!x || String(x.id||"")!==ticketId)return;
+
+       const xSeats=Array.isArray(x.seats)
+         ? x.seats.map(String)
+         : String(x.seat||"").split(",").map(function(v){return v.trim();}).filter(Boolean);
+
+       xSeats.forEach(function(s){
+         if(seats.indexOf(s)<0)seats.push(s);
+       });
+
+       if(xSeats.indexOf(currentSeat)>=0)oldFound=true;
+
+       // Remove ALL old records for this ticket. We will write one clean record.
+       updates[k]=null;
+     });
+
+     if(!oldFound){
+       alert("Purani booked seat record nahi mili. Booking refresh karke dobara try karein.");
+       return false;
+     }
+
+     // Replace the selected old seat with the new seat.
+     const pos=seats.indexOf(currentSeat);
+     if(pos>=0) seats[pos]=newSeat;
+     else seats.push(newSeat);
+
+     // Remove accidental duplicates.
+     seats=seats.filter(function(s,i,a){return a.indexOf(s)===i;});
+
+     // Check the new seat against OTHER tickets.
+     let conflict=false;
+     Object.keys(data).forEach(function(k){
+       const x=data[k];
+       if(!x || String(x.id||"")===ticketId)return;
+       if(String(x.journeyDate||"")!==String(journeyDate))return;
+       if(String(x.busName||"").trim()!==String(t.busName||"").trim())return;
+
+       const xSeats=Array.isArray(x.seats)
+         ? x.seats.map(String)
+         : String(x.seat||"").split(",").map(function(v){return v.trim();}).filter(Boolean);
+
+       if(xSeats.indexOf(newSeat)>=0)conflict=true;
+     });
+
+     if(conflict){
+       alert("Ye seat already booked hai. Dusri khali seat select karein.");
+       return false;
+     }
+
+     const updated=Object.assign({},t,{
+       name:name,
+       mobile:mobile,
+       bus:bus,
+       route:route,
+       scopeKey:[t.busName,bus,journeyDate,route].join("|"),
+       journeyDate:journeyDate,
+       seat:seats.join(", "),
+       seats:seats,
+       seatCount:seats.reduce(function(n,s){return n+seatUnitCount(s);},0),
+       rate:rate,
+       totalFare:(Number(rate)||0)*seats.reduce(function(n,s){return n+seatUnitCount(s);},0)
+     });
+
+     // One clean Firebase record after deleting every old record for this ticket.
+     const cleanKey=bookingKey(updated);
+     updates[cleanKey]=updated;
+
+     return db.ref("kt_bookings").update(updates).then(function(){
+       return updated;
+     });
+   }).then(function(updated){
+     if(!updated)return;
+
+     window._selectedBookedTicket=updated;
+     window._selectedBookedSeat=newSeat;
+     editingBookedSeat=newSeat;
+
+     document.getElementById("seatEditForm").style.display="none";
+     document.getElementById("editSeatBtn").style.display="block";
+
+     renderSeatsForSelectedDate();
+     showBookedSeatDetails(newSeat);
+     alert("Seat successfully changed. Purani seat ab khali hai.");
+   }).catch(function(e){
+     console.error(e);
+     alert("Update failed. Please check internet/database connection.");
+   });
+   return;
+ }
+
+ // Local-storage mode: replace only the selected seat inside the ticket.
+ let h=getHistory();
+ let idx=h.findIndex(function(x){return String(x.id)===String(editingBookedTicketId);});
+ if(idx<0){alert("Ticket not found");return;}
+
+ const oldSeats=Array.isArray(h[idx].seats)
+   ? h[idx].seats.slice()
+   : String(h[idx].seat||"").split(",").map(function(x){return x.trim();}).filter(Boolean);
+
+ const pos=oldSeats.indexOf(String(editingBookedSeat));
+ if(pos<0){alert("Current seat not found");return;}
+
+ const conflict=h.some(function(x){
+   if(String(x.id)===String(editingBookedTicketId))return false;
+   if(String(x.journeyDate||"")!==String(journeyDate))return false;
+   if(String(x.busName||"").trim()!==String(t.busName||"").trim())return false;
+   return String(x.seat||"").split(",").map(function(s){return s.trim();}).indexOf(newSeat)>=0;
+ });
+ if(conflict){alert("Ye seat already booked hai. Dusri khali seat select karein.");return;}
+
+ oldSeats[pos]=newSeat;
+ const units=oldSeats.reduce(function(n,s){return n+seatUnitCount(s);},0);
+ const updated=Object.assign({},h[idx],{
+   name:name,mobile:mobile,bus:bus,route:route,journeyDate:journeyDate,
+   seats:oldSeats,seat:oldSeats.join(", "),seatCount:units,
+   rate:rate,totalFare:(Number(rate)||0)*units
+ });
+ h[idx]=updated;
+ saveHistory(h);
+
+ window._selectedBookedTicket=updated;
+ window._selectedBookedSeat=newSeat;
+ editingBookedSeat=newSeat;
+ document.getElementById("seatEditForm").style.display="none";
+ document.getElementById("editSeatBtn").style.display="block";
+ renderSeatsForSelectedDate();
+ showBookedSeatDetails(newSeat);
+ alert("Seat successfully changed. Purani seat ab khali hai.");
+}
+
+function makeTicket(){
+  let busName=document.getElementById("busname").value.trim();
+  let name=document.getElementById("pname").value.trim();
+  let mob=document.getElementById("mobile").value.trim();
+  let bus=document.getElementById("busno").value.trim();
+  let journeyDate=document.getElementById("journeyDate").value;
+  let route=document.getElementById("route").value;
+  let rate=Number(document.getElementById("rate").value||0);
+  if(!busName){alert("Enter Bus Name");return;}
+  if(!journeyDate){alert("Select Journey Date");return;}
+  if(!route){alert("Select Route");return;}
+  if(!name){alert("Enter Passenger Name");return;}
+  if(!mob){alert("Enter Mobile Number");return;}
+  if(!bus){alert("Enter Bus Number");return;}
+  if(!selectedSeats.length){alert("Select at least one seat");return;}
+  if(!rate || rate<0){alert("Enter Rate Per Seat");return;}
+
+  let ticket={
+    id:Date.now().toString()+"_"+Math.random().toString(36).slice(2,8),
+    busName:busName,name:name,mobile:mob,bus:bus,journeyDate:journeyDate,
+    route:route,scopeKey:[busName,bus,journeyDate,route].join("|"),seat:selectedSeats.join(", "),seats:selectedSeats.slice(),rate:rate,seatCount:selectedSeatUnitCount(),totalFare:rate*selectedSeatUnitCount(),date:new Date().toLocaleString([], {hour12:true})
+  };
+
+  if(onlineReady){
+    const refs=selectedSeats.map(function(seat){
+      const copy=Object.assign({},ticket,{seat:String(seat),seats:selectedSeats.slice()});
+      return {seat:String(seat),ticket:copy,ref:db.ref("kt_bookings/"+bookingKey(copy))};
+    });
+    Promise.all(refs.map(function(x){return x.ref.transaction(function(cur){return cur!==null?undefined:x.ticket;});})).then(function(results){
+      if(results.some(function(r){return !r.committed;})){
+        alert("One or more selected seats were just booked by another agent. Please select again.");
+        renderSeatsForSelectedDate(); return;
+      }
+      currentTicket=ticket;
+      document.getElementById("booking").style.display="none";
+      document.getElementById("ticket").style.display="block";
+      renderTicket(currentTicket);
+    }).catch(function(err){console.error(err);alert("Online booking failed. Please check internet/database connection.");});
+    return;
+  }
+  let h=getHistory();
+  if(selectedSeats.some(function(s){return h.some(function(t){
+    return String(t.seat||"").split(",").map(function(x){return x.trim();}).indexOf(String(s))>=0 &&
+      String(t.journeyDate||"")===String(journeyDate) && String(t.busName||"")===String(busName);
+  });})){
+    alert("One or more selected seats are already booked for this bus on this date."); booking(); return;
+  }
+  h.push(ticket); localStorage.setItem("kt_history",JSON.stringify(h));
+  currentTicket=ticket;
+  document.getElementById("booking").style.display="none";
+  document.getElementById("ticket").style.display="block";
+  renderTicket(currentTicket);
+}
+function renderTicket(t){
+  document.getElementById("ticketData").innerHTML=
+  "Bus Name : "+safe(t.busName)+"<br>"+
+  "Bus No : "+safe(t.bus)+"<br>"+
+  "Route : "+safe(t.route || "")+"<br>"+
+  "Passenger : "+safe(t.name)+"<br>"+
+  "Mobile : "+safe(t.mobile)+"<br>"+
+  "Seat No : "+safe(t.seat)+"<br>"+
+  "Total Seats : "+safe(t.seatCount || 1)+"<br>"+
+  "Rate Per Seat : ₹"+safe(t.rate||0)+"<br>"+
+  "Total Fare : ₹"+safe(t.totalFare||0)+"<br>"+
+  "Booking Date : "+safe(t.date);
+}
+function showHistory(){
+  document.getElementById("dashboard").style.display="none";
+  document.getElementById("history").style.display="block";
+  filterTicketHistoryByBus();
+}
+function cancelTicket(id){
+  if(!confirm("Confirm ticket cancel?")) return;
+  if(onlineReady){
+    const found=getHistory().find(t=>String(t.id)===String(id));
+    if(!found){alert("Ticket not found");return;}
+    db.ref("kt_bookings").once("value").then(function(snap){
+      const data=snap.val()||{}, updates={};
+      Object.keys(data).forEach(function(k){
+        if(data[k] && String(data[k].id)===String(id)) updates[k]=null;
+      });
+      return db.ref("kt_bookings").update(updates);
+    }).then(function(){
+      alert("Ticket Cancelled"); showHistory();
+    }).catch(function(err){
+      console.error(err);
+      alert("Cancellation failed. Please check internet/database connection.");
+    });
+    return;
+  }
+  let h=getHistory().filter(t=>String(t.id)!==String(id));
+  localStorage.setItem("kt_history",JSON.stringify(h));
+  alert("Ticket Cancelled"); showHistory();
+}
+function backDashboard(){
+  document.getElementById("history").style.display="none";
+  document.getElementById("dashboard").style.display="block";
+}
+function backToDashboardFromConfirm(){["ticket","booking","history"].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display="none"});var d=document.getElementById("dashboard");if(d)d.style.display="block";selectedSeat=""; selectedSeats=[];}
+function buildSMS(){
+  if(!currentTicket) return "";
+  let t=currentTicket;
+  return "NEW KT TRAVELS\nBooking Confirmed\nContact Number: 9898380437\nBoarding Point: New Kt Travels Valinath Chowk Memnager\nBus Name: "+(t.busName || "NEW KT TRAVELS")+"\nBus No: "+t.bus+"\nJourney Date: "+ktSMSJourneyDate(t.journeyDate || "")+"\nRoute: "+(t.route || "")+"\nPassenger: "+t.name+"\nMobile: "+t.mobile+"\nSeat No: "+t.seat+"\nTotal Seats: "+(t.seatCount || 1)+"\nRate Per Seat: ₹"+(t.rate || 0)+"\nTotal Fare: ₹"+(t.totalFare || 0);
+}
+function sendSMS(){
+  if(!currentTicket){alert("No ticket found. Please make a booking first.");return;}
+  document.getElementById("ticket").style.display="none";
+  document.getElementById("smsScreen").style.display="block";
+  document.getElementById("smsPreview").textContent=buildSMS();
+}
+function sendNativeSMS(){
+  let t=currentTicket; if(!t)return;
+  let number=String(t.mobile).replace(/\D/g,""); if(number.length===10)number="+91"+number;
+  window.location.href="sms:"+number+"?body="+encodeURIComponent(buildSMS());
+}
+function backToConfirmTicket(){
+  document.getElementById("smsScreen").style.display="none";
+  document.getElementById("ticket").style.display="block";
+}
+function backDashboardFromTicket(){
+  document.getElementById("ticket").style.display="none";
+  document.getElementById("dashboard").style.display="block";
+  currentTicket=null;
+  selectedSeat="";
+}
+
+function safe(v){
+  return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+}
+</script>
+
+<script>function agentLogin(){var u=document.getElementById("agentUsername").value.trim(),p=document.getElementById("agentPassword").value,e=document.getElementById("loginError");if(u==="Sonu"&&p==="9559"){document.getElementById("agentLogin").style.display="none";document.getElementById("dashboard").style.display="block";sessionStorage.setItem("kt_agent_logged_in","1");e.textContent=""}else{e.textContent="Wrong username or password";document.getElementById("agentPassword").value=""}}document.addEventListener("DOMContentLoaded",function(){var x=document.getElementById("agentLogin");if(sessionStorage.getItem("kt_agent_logged_in")==="1"){x.style.display="none";document.getElementById("dashboard").style.display="block"}});</script><script id="kt-bus-wise-history">
+function filterTicketHistoryByBus(){
+  var all=[]; try{all=getHistory()||[]}catch(e){}
+  var s=document.getElementById("historyBusFilter"),b=document.getElementById("historyData");
+  if(!s||!b)return;
+  var names=[];
+  all.forEach(function(t){
+    var n=String(t.busName||"NEW KT TRAVELS").trim();
+    if(n&&names.indexOf(n)<0)names.push(n);
+  });
+  var old=s.value||"ALL";
+  s.innerHTML='<option value="ALL">All Buses</option>';
+  names.forEach(function(n){var o=document.createElement("option");o.value=n;o.textContent=n;s.appendChild(o);});
+  s.value=names.indexOf(old)>=0?old:"ALL";
+  var sel=s.value,list=sel==="ALL"?all:all.filter(function(t){
+    return String(t.busName||"NEW KT TRAVELS").trim()===sel;
+  });
+  if(!list.length){b.innerHTML="<p>No ticket history found.</p>";return;}
+  list.sort(function(a,b){return String(b.date||"").localeCompare(String(a.date||""));});
+  b.innerHTML="";
+  list.forEach(function(t){
+    b.innerHTML+="<hr><b>Bus Name:</b> "+safe(t.busName||"NEW KT TRAVELS")+
+      "<br><b>Passenger:</b> "+safe(t.name||"")+
+      "<br><b>Mobile:</b> "+safe(t.mobile||"")+
+      "<br><b>Bus No:</b> "+safe(t.bus||"")+
+      "<br><b>Route:</b> "+safe(t.route||"")+
+      "<br><b>Seat:</b> "+safe(t.seat||"")+
+      "<br><b>Total Seats:</b> "+safe(t.seatCount || (Array.isArray(t.seats)?t.seats.reduce(function(a,x){return a+seatUnitCount(x);},0):1))+
+      "<br><b>Rate Per Seat:</b> ₹"+safe(t.rate||0)+
+      "<br><b>Total Fare:</b> ₹"+safe(t.totalFare||0)+
+      "<br><b>Journey Date:</b> "+safe(t.journeyDate||"")+
+      "<br><b>Booking Date:</b> "+safe(t.date||"")+
+      '<br><button onclick="cancelTicket(\''+String(t.id).replace(/'/g,"\\'")+'\')">Cancel Ticket</button>';
+  });
+}
+document.addEventListener("DOMContentLoaded",function(){if(document.getElementById("historyBusFilter"))filterTicketHistoryByBus()});
+</script>
+
+<script id="kt-bus-name-saved-options">
+(function(){
+  const KEY="kt_saved_bus_names";
+  function names(){try{return JSON.parse(localStorage.getItem(KEY)||"[]").filter(Boolean)}catch(e){return []}}
+  function render(selected){
+    const s=document.getElementById("busname"); if(!s)return;
+    const a=names(); s.innerHTML="";
+    a.forEach(function(n){let o=document.createElement("option");o.value=n;o.textContent=n;s.appendChild(o)});
+    let o=document.createElement("option");o.value="__NEW__";o.textContent="＋ Add New Bus Name";s.appendChild(o);
+    if(selected && a.indexOf(selected)>=0)s.value=selected; else s.value=a.length?a[0]:"__NEW__";
+    toggle();
+  }
+  function toggle(){const s=document.getElementById("busname"),i=document.getElementById("otherBusName"),b=document.getElementById("saveBusNameBtn"); if(!s)return; const n=s.value==="__NEW__"; if(i)i.style.display=n?"block":"none"; if(b)b.style.display=n?"block":"none";}
+  function save(){const i=document.getElementById("otherBusName"),n=(i.value||"").trim(); if(!n){alert("Bus Name enter karein");return} let a=names(); if(a.indexOf(n)<0){a.push(n);localStorage.setItem(KEY,JSON.stringify(a))} render(n); i.value=""; if(typeof renderSeatsForSelectedDate==="function")renderSeatsForSelectedDate();}
+  document.addEventListener("DOMContentLoaded",function(){render(); const s=document.getElementById("busname"),b=document.getElementById("saveBusNameBtn"); if(s)s.addEventListener("change",function(){toggle();if(typeof renderSeatsForSelectedDate==="function")renderSeatsForSelectedDate()}); if(b)b.addEventListener("click",save);});
+})();
+</script>
+<script id="kt-date-seat-fix">
+function renderSeatsForSelectedDate(){
+  const dateInput=document.getElementById("journeyDate");
+  const busInput=document.getElementById("busname");
+  const date=dateInput?dateInput.value:"";
+  const bus=busInput?(busInput.value.trim()||"NEW KT TRAVELS"):"NEW KT TRAVELS";
+  const busNoInput=document.getElementById("busno");
+  const routeInput=document.getElementById("route");
+  const busNo=busNoInput?busNoInput.value.trim():"";
+  const route=routeInput?routeInput.value.trim():"";
+  const h=getHistory().filter(function(t){
+    return String(t.journeyDate||"")===String(date) &&
+           String(t.busName||"NEW KT TRAVELS").trim()===bus &&
+           String(t.bus||"").trim()===busNo &&
+           String(t.route||"").trim()===route;
+  });
+  const booked=[]; h.forEach(function(t){String(t.seat||"").split(",").forEach(function(x){x=x.trim();if(!x)return;booked.push(x);if(/^(\d+)-(\d+)$/.test(x)||/^[A-Za-z]-[A-Za-z]$/.test(x)){x.split("-").forEach(function(part){if(booked.indexOf(part)<0)booked.push(part);});}});});
+  const box=document.getElementById("seats");
+  if(!box)return;
+  box.innerHTML="";
+  ["UP","DOWN","GALLERY","DOWN","UP"].forEach(function(text){
+    const hd=document.createElement("div");hd.className="seat-head";hd.textContent=text;box.appendChild(hd);
+  });
+  const rows=[["D","C","15-16","A-B"],["E","F","17-18","G-H"],["L","K","19-20","I-J"],["M","N","21-22","O-P"],["T","S","23-24","Q-R"],["U","V","25-26","W-X"]];
+  rows.forEach(function(row){
+    addSeatButton(row[0],booked,box);addSeatButton(row[1],booked,box);
+    const aisle=document.createElement("div");aisle.className="aisle";aisle.textContent="GALLERY";box.appendChild(aisle);
+    addSeatPairCell(row[2],booked,box);addSeatPairCell(row[3],booked,box);
+  });
+
+  // Sabse niche Gallery ke beech mein ek VIP seat
+  const vip=document.createElement("button");
+  vip.type="button";
+  vip.className="seat vip-seat";
+  vip.textContent="VIP";
+  vip.style.gridColumn="3";
+  if(booked.includes("VIP")){
+    vip.classList.add("booked");
+    vip.title="Booked - tap to view details";
+    vip.onclick=function(){showBookedSeatDetails("VIP");};
+  }else{
+    vip.onclick=function(){selectSeat("VIP",vip);};
+  }
+  box.appendChild(vip);
+}
+document.addEventListener("DOMContentLoaded",function(){
+  ktBindScopeFields();
+  const d=document.getElementById("journeyDate");
+  const b=document.getElementById("busname");
+  if(d){
+    if(!d.value){
+      const now=new Date(), local=new Date(now.getTime()-now.getTimezoneOffset()*60000);
+      d.value=local.toISOString().slice(0,10);
+    }
+    d.addEventListener("change",renderSeatsForSelectedDate);
+  }
+  if(b)b.addEventListener("change",renderSeatsForSelectedDate);
+});
+</script>
+
+
+<script id="kt-sms-date-ddmmyyyy">
+function ktSMSJourneyDate(v){
+  if(!v) return "";
+  var s=String(v).trim();
+  var m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return m[3]+"/"+m[2]+"/"+m[1];
+  return s;
+}
+</script>
+
+
+<script id="kt-shared-online-init">
+document.addEventListener("DOMContentLoaded",function(){initSharedDatabase();});
+</script>
+
+
+<script>
+/* KT_FORCE_SHARED_FIREBASE_SYNC_V1 */
+(function(){
+  function refresh(){
+    try{
+      if(typeof refreshCurrentScreen==="function") refreshCurrentScreen();
+      else if(typeof renderSeatsForSelectedDate==="function") renderSeatsForSelectedDate();
+    }catch(e){console.error(e);}
+  }
+
+  // Never silently fall back to per-device localStorage for live booking mode.
+  // The existing Firebase listener remains the shared source of truth.
+  window.ktSharedSyncReady=function(){
+    return !!(window.onlineReady && window.db);
+  };
+
+  // Keep both mobiles updated as soon as Firebase changes.
+  function attach(){
+    if(!window.db || window._ktForceSyncAttached)return;
+    window._ktForceSyncAttached=true;
+    window.db.ref("kt_bookings").on("value",function(snap){
+      window.onlineBookings=snap.val()||{};
+      window.onlineReady=true;
+      refresh();
+    },function(err){
+      console.error("Shared Firebase sync error:",err);
+      window.onlineReady=false;
+      var st=document.getElementById("onlineStatus");
+      if(st){st.textContent="OFFLINE - shared sync unavailable";st.style.color="#b00000";}
+    });
+  }
+
+  var oldInit=window.initSharedDatabase;
+  window.initSharedDatabase=function(){
+    if(typeof oldInit==="function") oldInit();
+    setTimeout(attach,300);
+  };
+
+  document.addEventListener("DOMContentLoaded",function(){
+    setTimeout(function(){
+      if(window.db) attach();
+      refresh();
+    },800);
+  });
+})();
+</script>
+
+</body>
+</html>
